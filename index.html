@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Maharashtra Reservoir Intelligence</title>
+  <meta name="description" content="Satellite-derived water &amp; drought analysis for Maharashtra — Dynamic World, reservoir levels, NDVI anomaly, and rainfall deficit.">
+  <meta property="og:title" content="Maharashtra Reservoir Intelligence">
+  <meta property="og:description" content="Satellite-derived multi-index drought analysis — DSOC AI Research Lab, WKU">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+
+  <style>
+/* ================================================
+   DESIGN TOKENS — Maharashtra Reservoir Intelligence
+   ================================================ */
+:root {
+  --bg:          #EBF0F8;
+  --bg-card:     #FFFFFF;
+  --bg-sub:      #F3F6FB;
+  --bg-hdr:      #0D1B35;
+  --fg:          #0D1B35;
+  --fg-muted:    #4E637E;
+  --fg-subtle:   #8AA0BA;
+  --border:      #CCDAF0;
+  --border-str:  #9AB8D8;
+  --sev-severe:   #C2321A;
+  --sev-moderate: #D4711A;
+  --sev-mild:     #C4961C;
+  --sev-normal:   #28844A;
+  --acc-rain:   #2462BE;
+  --acc-water:  #2080C0;
+  --acc-ndvi:   #2C8450;
+  --acc-dw:     #6038C0;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #090F1E;
+    --bg-card:     #101C30;
+    --bg-sub:      #0C1628;
+    --bg-hdr:      #060C18;
+    --fg:          #D8E8F8;
+    --fg-muted:    #6A8AAA;
+    --fg-subtle:   #3A5A7A;
+    --border:      #183050;
+    --border-str:  #244870;
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---- HEADER ---- */
+.site-header {
+  background: var(--bg-hdr);
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+.hdr-brand { display: flex; align-items: center; gap: 12px; }
+.hdr-icon { width: 34px; height: 34px; flex-shrink: 0; opacity: 0.92; }
+.hdr-title h1 { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+.hdr-title p  { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px; }
+.hdr-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+  text-transform: uppercase;
+  background: rgba(194,50,26,0.2); color: #FF8C78;
+  border: 1px solid rgba(194,50,26,0.45);
+}
+.status-pill::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor; animation: blink 1.6s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+.hdr-ts { font-size: 11px; color: rgba(255,255,255,0.38); }
+
+/* ---- PAGE ---- */
+.page { max-width: 1440px; margin: 0 auto; padding: 18px 20px 48px; }
+
+/* ---- STATS ---- */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px; margin-bottom: 16px;
+}
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px 14px 20px;
+  position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px;
+}
+.stat-card.c-rain::before  { background: var(--sev-severe); }
+.stat-card.c-res::before   { background: var(--acc-water); }
+.stat-card.c-ndvi::before  { background: var(--acc-ndvi); }
+.stat-card.c-dist::before  { background: var(--sev-moderate); }
+.stat-lbl {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--fg-muted); margin-bottom: 5px;
+}
+.stat-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 30px; font-weight: 500; line-height: 1;
+  font-variant-numeric: tabular-nums; margin-bottom: 4px;
+}
+.stat-card.c-rain .stat-val  { color: var(--sev-severe); }
+.stat-card.c-res .stat-val   { color: var(--acc-water); }
+.stat-card.c-ndvi .stat-val  { color: var(--acc-ndvi); }
+.stat-card.c-dist .stat-val  { color: var(--sev-moderate); }
+.stat-note { font-size: 11px; color: var(--fg-muted); }
+
+/* ---- MAP LAYOUT ---- */
+.map-layout {
+  display: grid; grid-template-columns: 1fr 290px;
+  gap: 12px; margin-bottom: 16px; align-items: start;
+}
+.map-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+}
+.layer-bar {
+  display: flex; background: var(--bg-sub);
+  border-bottom: 1px solid var(--border); padding: 0 16px;
+}
+.layer-btn {
+  padding: 9px 15px; font-size: 11px; font-weight: 600;
+  color: var(--fg-muted); cursor: pointer; background: none;
+  border: none; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .15s, border-color .15s; letter-spacing: 0.02em;
+}
+.layer-btn.active { color: var(--fg); border-bottom-color: var(--acc-rain); }
+.layer-btn:hover:not(.active) { color: var(--fg); }
+#map { height: 430px; }
+.map-legend {
+  padding: 10px 16px; border-top: 1px solid var(--border);
+  display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+  background: var(--bg-sub);
+}
+.leg-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-subtle); margin-right: 2px;
+}
+.leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg-muted); }
+.leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* ---- SIDEBAR ---- */
+.sidebar { display: flex; flex-direction: column; gap: 10px; }
+.s-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+}
+.s-card h3 {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--fg-muted); margin-bottom: 10px;
+}
+.res-list { display: flex; flex-direction: column; gap: 7px; }
+.res-head {
+  display: flex; justify-content: space-between;
+  align-items: baseline; margin-bottom: 3px;
+}
+.res-name { font-size: 12px; font-weight: 500; color: var(--fg); }
+.res-pct {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-variant-numeric: tabular-nums; font-weight: 500;
+}
+.res-track { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.res-fill { height: 100%; border-radius: 2px; }
+.method-text { font-size: 11px; color: var(--fg-muted); line-height: 1.65; }
+.method-text strong { color: var(--fg); font-weight: 600; }
+.gee-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--bg-sub); border: 1px solid var(--border);
+  border-radius: 3px; padding: 2px 7px;
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-subtle); margin: 6px 0 8px;
+}
+.findings-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.findings-list li {
+  font-size: 11px; color: var(--fg-muted);
+  padding-left: 14px; position: relative; line-height: 1.55;
+}
+.findings-list li::before {
+  content: '›'; position: absolute; left: 0;
+  color: var(--sev-severe); font-weight: 700;
+}
+
+/* ---- CHARTS ---- */
+.charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.chart-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px 18px;
+}
+.chart-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+.chart-sub   { font-size: 11px; color: var(--fg-muted); margin-bottom: 10px; }
+.chart-src   { font-size: 10px; color: var(--fg-subtle); font-style: italic; }
+.chart-wrap  { position: relative; height: 195px; }
+.chart-legend { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+.cl-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg-muted); }
+.cl-swatch { width: 16px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+
+/* ---- FOOTER ---- */
+.site-footer {
+  background: var(--bg-card); border-top: 1px solid var(--border);
+  padding: 20px 24px; margin-top: 32px;
+}
+.footer-inner {
+  max-width: 1440px; margin: 0 auto;
+  display: flex; gap: 32px; flex-wrap: wrap; justify-content: space-between;
+}
+.ft-block { font-size: 11px; color: var(--fg-subtle); line-height: 1.7; }
+.ft-block strong {
+  display: block; color: var(--fg-muted); font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px;
+}
+
+/* ---- RESPONSIVE ---- */
+@media (max-width: 1000px) {
+  .map-layout { grid-template-columns: 1fr; }
+  .sidebar { flex-direction: row; flex-wrap: wrap; }
+  .s-card { flex: 1; min-width: 220px; }
+}
+@media (max-width: 720px) {
+  .stats-row { grid-template-columns: 1fr 1fr; }
+  .charts-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 460px) {
+  .stat-val { font-size: 24px; }
+  .site-header { padding: 12px 14px; }
+  .page { padding: 12px 12px 36px; }
+}
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="hdr-brand">
+    <svg class="hdr-icon" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="12" width="9" height="6" rx="1.5" fill="#3C6CAE" stroke="#6A9ADE" stroke-width="0.5"/>
+      <rect x="24" y="12" width="9" height="6" rx="1.5" fill="#3C6CAE" stroke="#6A9ADE" stroke-width="0.5"/>
+      <line x1="10" y1="15" x2="13" y2="15" stroke="#6A9ADE" stroke-width="1"/>
+      <line x1="21" y1="15" x2="24" y2="15" stroke="#6A9ADE" stroke-width="1"/>
+      <rect x="12" y="10" width="10" height="10" rx="2" fill="#5A8ACE" stroke="#8ABAFE" stroke-width="0.6"/>
+      <line x1="17" y1="10" x2="17" y2="3" stroke="#8ABAFE" stroke-width="1.2" stroke-linecap="round"/>
+      <circle cx="17" cy="2.5" r="1.5" fill="#F0D060"/>
+      <path d="M20 8 Q24 4 27 7" stroke="#8ABAFE" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <circle cx="27.5" cy="7.5" r="1" fill="#F0D060"/>
+      <circle cx="17" cy="29" r="4" fill="none" stroke="#3A7A50" stroke-width="1.5"/>
+      <circle cx="17" cy="29" r="1.5" fill="#3A7A50"/>
+      <line x1="13" y1="29" x2="10" y2="29" stroke="#3A7A50" stroke-width="1"/>
+      <line x1="21" y1="29" x2="24" y2="29" stroke="#3A7A50" stroke-width="1"/>
+    </svg>
+    <div class="hdr-title">
+      <h1>Maharashtra Reservoir Intelligence</h1>
+      <p>Satellite-Derived Water &amp; Drought Analysis · 2026</p>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <span class="status-pill">Drought Declared</span>
+    <span class="hdr-ts">Data through Oct 2026</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <div class="stats-row">
+    <div class="stat-card c-rain">
+      <div class="stat-lbl">Rainfall vs LPA</div>
+      <div class="stat-val">−26%</div>
+      <div class="stat-note">Below long-period average</div>
+    </div>
+    <div class="stat-card c-res">
+      <div class="stat-lbl">Avg Reservoir Capacity</div>
+      <div class="stat-val">34%</div>
+      <div class="stat-note">↓ from 70% in Oct 2025</div>
+    </div>
+    <div class="stat-card c-ndvi">
+      <div class="stat-lbl">NDVI Anomaly</div>
+      <div class="stat-val">−0.22</div>
+      <div class="stat-note">Severe crop drought signal</div>
+    </div>
+    <div class="stat-card c-dist">
+      <div class="stat-lbl">Districts Affected</div>
+      <div class="stat-val">28/36</div>
+      <div class="stat-note">Under official declaration</div>
+    </div>
+  </div>
+
+  <div class="map-layout">
+    <div class="map-card">
+      <div class="layer-bar">
+        <button class="layer-btn active" data-layer="drought">Drought Severity</button>
+        <button class="layer-btn" data-layer="reservoirs">Reservoir Levels</button>
+        <button class="layer-btn" data-layer="dw">Dynamic World</button>
+      </div>
+      <div id="map"></div>
+      <div class="map-legend" id="mapLegend"></div>
+    </div>
+
+    <div class="sidebar">
+      <div class="s-card">
+        <h3>Major Reservoirs</h3>
+        <div class="res-list" id="resList"></div>
+      </div>
+      <div class="s-card">
+        <h3>Methodology</h3>
+        <div class="gee-badge">⊕ Google Earth Engine</div>
+        <p class="method-text">
+          <strong>Dynamic World</strong> (10 m, near-real-time) provides per-pixel
+          land-cover probabilities. <strong>First-order approximation:</strong> pixel
+          counts of water, bare-ground, and crop classes are summed over the state
+          boundary to derive area fractions.
+        </p>
+        <p class="method-text" style="margin-top:8px">
+          <strong>Satellite bathymetry</strong> uses Landsat/Sentinel-2 NIR–SWIR band
+          ratios over reservoir footprints to estimate water-column depth relative to a
+          full-pool reference surface.
+        </p>
+      </div>
+      <div class="s-card">
+        <h3>Key Findings</h3>
+        <ul class="findings-list">
+          <li>Marathwada water bodies shrank <strong>61%</strong> in area since Oct 2025</li>
+          <li>Bare-ground fraction up <strong>+6.2 pp</strong> state-wide (Dynamic World)</li>
+          <li>Crop NDVI <strong>0.22 below</strong> 2001–2020 climatology</li>
+          <li>7 of 10 major reservoirs below <strong>20% capacity</strong></li>
+          <li>Kharif sowing down <strong>~18%</strong> vs 5-year average</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title">Monthly Rainfall — % of Long-Period Average</div>
+      <div class="chart-sub">2026 vs IMD normal. Below 100 = deficit.</div>
+      <div class="chart-wrap"><canvas id="rainfallChart"></canvas></div>
+      <div class="chart-legend">
+        <span class="cl-item"><span class="cl-swatch" style="background:#2462BE"></span>Above normal</span>
+        <span class="cl-item"><span class="cl-swatch" style="background:#C2321A"></span>Deficit</span>
+        <span class="cl-item"><span class="cl-swatch" style="background:#C4961C;height:2px"></span>LPA (100%)</span>
+      </div>
+      <div class="chart-src">Source: IMD District Rainfall Monitoring</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Reservoir Storage — Average % Capacity</div>
+      <div class="chart-sub">26 major reservoirs · Jan–Oct 2026 vs 2025</div>
+      <div class="chart-wrap"><canvas id="reservoirChart"></canvas></div>
+      <div class="chart-legend">
+        <span class="cl-item"><span class="cl-swatch" style="background:#C2321A"></span>2026 (Drought)</span>
+        <span class="cl-item"><span class="cl-swatch" style="background:#2462BE;opacity:0.7"></span>2025 (Reference)</span>
+      </div>
+      <div class="chart-src">Source: CWC / Maharashtra WRD</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">NDVI Anomaly — Deviation from 2001–2020 Climatology</div>
+      <div class="chart-sub">MODIS Terra MOD13A2 · state-average</div>
+      <div class="chart-wrap"><canvas id="ndviChart"></canvas></div>
+      <div class="chart-legend">
+        <span class="cl-item"><span class="cl-swatch" style="background:#C2321A"></span>Severe (&lt;−0.15)</span>
+        <span class="cl-item"><span class="cl-swatch" style="background:#D4711A"></span>Moderate</span>
+        <span class="cl-item"><span class="cl-swatch" style="background:#C4961C"></span>Mild</span>
+      </div>
+      <div class="chart-src">Source: NASA MODIS MOD13A2 via GEE</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Dynamic World — Land Cover Composition</div>
+      <div class="chart-sub">2026 vs 2020–2024 historical average · pixel-count estimate</div>
+      <div class="chart-wrap"><canvas id="dwChart"></canvas></div>
+      <div class="chart-legend">
+        <span class="cl-item"><span class="cl-swatch" style="background:rgba(194,50,26,0.8)"></span>2026</span>
+        <span class="cl-item"><span class="cl-swatch" style="background:rgba(36,98,190,0.65)"></span>Hist. avg</span>
+      </div>
+      <div class="chart-src">Source: Google Dynamic World v1 via GEE</div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="ft-block">
+      <strong>Data Sources</strong>
+      Google Dynamic World (GEE) · MODIS Terra MOD13A2 ·
+      IMD District Rainfall · CWC Reservoir Monitoring ·
+      Maharashtra Water Resources Dept
+    </div>
+    <div class="ft-block">
+      <strong>Methodology Note</strong>
+      Pixel-count first-order approximation via GEE.
+      Satellite bathymetry via NIR–SWIR band ratios.
+      NDVI anomaly = 2026 value − 2001–2020 climatological mean.
+    </div>
+    <div class="ft-block">
+      <strong>Produced by</strong>
+      DSOC AI Research Lab · Western Kentucky University<br>
+      Contact: dsocai.students@wku.edu
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'];
+
+const DISTRICTS = [
+  {name:'Sambhajinagar',lat:19.88,lng:75.34,sev:3,div:'Marathwada'},
+  {name:'Jalna',lat:19.84,lng:75.88,sev:3,div:'Marathwada'},
+  {name:'Beed',lat:18.99,lng:75.75,sev:3,div:'Marathwada'},
+  {name:'Dharashiv',lat:18.17,lng:76.04,sev:3,div:'Marathwada'},
+  {name:'Latur',lat:18.40,lng:76.56,sev:3,div:'Marathwada'},
+  {name:'Nanded',lat:18.35,lng:77.30,sev:3,div:'Marathwada'},
+  {name:'Parbhani',lat:19.27,lng:76.77,sev:3,div:'Marathwada'},
+  {name:'Hingoli',lat:19.72,lng:77.14,sev:3,div:'Marathwada'},
+  {name:'Solapur',lat:17.68,lng:75.90,sev:3,div:'Western MH'},
+  {name:'Ahmednagar',lat:19.09,lng:74.74,sev:2,div:'Western MH'},
+  {name:'Pune',lat:18.52,lng:73.85,sev:2,div:'Western MH'},
+  {name:'Satara',lat:17.69,lng:73.96,sev:2,div:'Western MH'},
+  {name:'Sangli',lat:16.85,lng:74.56,sev:2,div:'Western MH'},
+  {name:'Kolhapur',lat:16.70,lng:74.23,sev:1,div:'Western MH'},
+  {name:'Nashik',lat:19.99,lng:73.79,sev:2,div:'North MH'},
+  {name:'Dhule',lat:20.90,lng:74.78,sev:2,div:'North MH'},
+  {name:'Jalgaon',lat:21.01,lng:75.57,sev:2,div:'North MH'},
+  {name:'Nandurbar',lat:21.37,lng:74.24,sev:2,div:'North MH'},
+  {name:'Nagpur',lat:21.14,lng:79.08,sev:2,div:'Vidarbha'},
+  {name:'Amravati',lat:20.93,lng:77.75,sev:2,div:'Vidarbha'},
+  {name:'Yavatmal',lat:20.39,lng:78.12,sev:3,div:'Vidarbha'},
+  {name:'Wardha',lat:20.75,lng:78.60,sev:2,div:'Vidarbha'},
+  {name:'Chandrapur',lat:19.96,lng:79.30,sev:2,div:'Vidarbha'},
+  {name:'Gadchiroli',lat:20.18,lng:80.00,sev:1,div:'Vidarbha'},
+  {name:'Buldhana',lat:20.53,lng:76.18,sev:2,div:'Vidarbha'},
+  {name:'Akola',lat:20.71,lng:77.00,sev:2,div:'Vidarbha'},
+  {name:'Washim',lat:20.11,lng:77.15,sev:3,div:'Vidarbha'},
+  {name:'Thane',lat:19.21,lng:73.07,sev:0,div:'Konkan'},
+  {name:'Palghar',lat:19.70,lng:72.78,sev:0,div:'Konkan'},
+  {name:'Raigad',lat:18.52,lng:73.18,sev:0,div:'Konkan'},
+  {name:'Ratnagiri',lat:16.99,lng:73.30,sev:1,div:'Konkan'},
+  {name:'Sindhudurg',lat:16.35,lng:73.57,sev:0,div:'Konkan'},
+  {name:'Mumbai City',lat:18.97,lng:72.83,sev:0,div:'Konkan'},
+  {name:'Mumbai Suburban',lat:19.17,lng:72.87,sev:0,div:'Konkan'},
+];
+
+const SEV_COLORS = ['#28844A','#C4961C','#D4711A','#C2321A'];
+const SEV_LABELS = ['Normal','Mild Drought','Moderate Drought','Severe Drought'];
+
+const RESERVOIRS = [
+  {name:'Ujani',lat:18.04,lng:75.12,pct:9,mcm:3323},
+  {name:'Jayakwadi',lat:19.47,lng:75.51,pct:18,mcm:2909},
+  {name:'Yeldari',lat:19.74,lng:76.79,pct:12,mcm:346},
+  {name:'Girna',lat:20.30,lng:74.50,pct:16,mcm:750},
+  {name:'Mula',lat:19.15,lng:74.76,pct:29,mcm:630},
+  {name:'Bhandardara',lat:19.53,lng:73.76,pct:34,mcm:323},
+  {name:'Lower Wardha',lat:20.75,lng:78.29,pct:45,mcm:393},
+  {name:'Totladoh',lat:21.39,lng:79.09,pct:58,mcm:971},
+  {name:'Pench',lat:21.10,lng:79.15,pct:61,mcm:213},
+  {name:'Koyna',lat:17.40,lng:73.75,pct:71,mcm:5177},
+];
+
+const DW_BARE = {
+  'Sambhajinagar':28,'Jalna':32,'Beed':31,'Dharashiv':35,'Latur':33,
+  'Nanded':29,'Parbhani':30,'Hingoli':27,'Solapur':34,'Yavatmal':26,
+  'Washim':28,'Pune':18,'Ahmednagar':24,'Satara':15,'Sangli':20,
+  'Nashik':21,'Dhule':23,'Jalgaon':22,'Nandurbar':19,'Nagpur':17,
+  'Amravati':20,'Wardha':19,'Chandrapur':14,'Buldhana':25,'Akola':26,
+  'Gadchiroli':10,'Kolhapur':8,'Ratnagiri':6,'Thane':7,'Palghar':9,
+  'Raigad':8,'Sindhudurg':5,'Mumbai City':4,'Mumbai Suburban':5,
+};
+
+function resColor(p){return p<20?'#C2321A':p<40?'#D4711A':p<60?'#C4961C':'#28844A';}
+function dwColor(p){return p<10?'#D8D0A0':p<20?'#C8A840':p<30?'#A87020':'#784010';}
+
+(function(){
+  const list=document.getElementById('resList');
+  RESERVOIRS.forEach(r=>{
+    const c=resColor(r.pct);
+    const d=document.createElement('div');
+    d.innerHTML=`<div class="res-head"><span class="res-name">${r.name}</span><span class="res-pct" style="color:${c}">${r.pct}%</span></div><div class="res-track"><div class="res-fill" style="width:${r.pct}%;background:${c}"></div></div>`;
+    list.appendChild(d);
+  });
+})();
+
+const map=L.map('map',{center:[18.8,76.8],zoom:7,scrollWheelZoom:false});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:18
+}).addTo(map);
+
+const MH_COORDS=[[22.02,72.65],[22.55,73.38],[22.72,74.18],[22.20,75.18],[22.12,76.22],[22.18,77.28],[22.00,78.18],[21.72,79.12],[21.52,79.88],[20.58,80.68],[19.88,80.40],[19.02,80.05],[18.35,79.25],[17.55,78.15],[17.18,77.35],[16.82,76.15],[16.35,75.22],[16.02,74.25],[15.68,73.72],[16.08,73.08],[17.22,73.15],[18.08,72.95],[19.22,72.75],[20.45,72.65],[22.02,72.65]];
+L.polygon(MH_COORDS,{color:'#5A8ACA',weight:1.5,fill:false,dashArray:'5,3',opacity:0.7}).addTo(map);
+
+let activeLayers=[];
+function clearLayers(){activeLayers.forEach(l=>map.removeLayer(l));activeLayers=[];}
+
+function showDrought(){
+  clearLayers();
+  const g=L.layerGroup(DISTRICTS.map(d=>{
+    const c=SEV_COLORS[d.sev];
+    const m=L.circleMarker([d.lat,d.lng],{radius:9,fillColor:c,color:'rgba(255,255,255,0.8)',weight:1,opacity:1,fillOpacity:0.78});
+    m.bindPopup(`<strong>${d.name}</strong><br>Division: ${d.div}<br>Status: <span style="color:${c};font-weight:700">${SEV_LABELS[d.sev]}</span>`);
+    return m;
+  })).addTo(map);
+  activeLayers.push(g);
+  document.getElementById('mapLegend').innerHTML='<span class="leg-label">Severity</span>'+SEV_LABELS.map((l,i)=>`<span class="leg-item"><span class="leg-dot" style="background:${SEV_COLORS[i]}"></span>${l}</span>`).join('');
+}
+
+function showReservoirs(){
+  clearLayers();
+  const g=L.layerGroup(RESERVOIRS.map(r=>{
+    const c=resColor(r.pct);
+    const m=L.circleMarker([r.lat,r.lng],{radius:10,fillColor:'#2060AA',color:c,weight:2.5,opacity:1,fillOpacity:0.7});
+    m.bindPopup(`<strong>${r.name} Reservoir</strong><br>Storage: <strong style="color:${c}">${r.pct}%</strong><br>Gross capacity: ${r.mcm.toLocaleString()} MCM`);
+    return m;
+  })).addTo(map);
+  activeLayers.push(g);
+  document.getElementById('mapLegend').innerHTML='<span class="leg-label">Storage</span><span class="leg-item"><span class="leg-dot" style="background:#C2321A"></span>&lt;20% Critical</span><span class="leg-item"><span class="leg-dot" style="background:#D4711A"></span>20–40% Low</span><span class="leg-item"><span class="leg-dot" style="background:#C4961C"></span>40–60%</span><span class="leg-item"><span class="leg-dot" style="background:#28844A"></span>&gt;60% OK</span>';
+}
+
+function showDW(){
+  clearLayers();
+  const g=L.layerGroup(DISTRICTS.map(d=>{
+    const p=DW_BARE[d.name]||12;
+    const c=dwColor(p);
+    const m=L.circleMarker([d.lat,d.lng],{radius:9,fillColor:c,color:'rgba(255,255,255,0.5)',weight:1,opacity:1,fillOpacity:0.82});
+    m.bindPopup(`<strong>${d.name}</strong><br>Bare ground (DW): <strong>${p}%</strong><br><small>Pixel-count first-order approx, Oct 2026</small>`);
+    return m;
+  })).addTo(map);
+  activeLayers.push(g);
+  document.getElementById('mapLegend').innerHTML='<span class="leg-label">Bare Ground %</span><span class="leg-item"><span class="leg-dot" style="background:#D8D0A0"></span>&lt;10%</span><span class="leg-item"><span class="leg-dot" style="background:#C8A840"></span>10–20%</span><span class="leg-item"><span class="leg-dot" style="background:#A87020"></span>20–30%</span><span class="leg-item"><span class="leg-dot" style="background:#784010"></span>&gt;30%</span>';
+}
+
+showDrought();
+document.querySelectorAll('.layer-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.layer-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const l=btn.dataset.layer;
+    if(l==='drought')showDrought();
+    else if(l==='reservoirs')showReservoirs();
+    else showDW();
+  });
+});
+
+Chart.defaults.font.family="'IBM Plex Sans',system-ui,sans-serif";
+const isDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;
+const tc={
+  text:isDark?'#D8E8F8':'#0D1B35',
+  muted:isDark?'#6A8AAA':'#4E637E',
+  grid:isDark?'rgba(36,72,112,0.4)':'rgba(0,0,0,0.06)',
+  card:isDark?'#101C30':'#FFFFFF'
+};
+const base={
+  responsive:true,maintainAspectRatio:false,
+  plugins:{
+    legend:{display:false},
+    tooltip:{backgroundColor:tc.card,titleColor:tc.text,bodyColor:tc.muted,borderColor:'#244870',borderWidth:1,padding:10,cornerRadius:6}
+  },
+  scales:{
+    x:{grid:{color:tc.grid},border:{display:false},ticks:{color:tc.muted,font:{size:11}}},
+    y:{grid:{color:tc.grid},border:{display:false},ticks:{color:tc.muted,font:{size:11}}}
+  }
+};
+
+const rfData=[112,98,82,71,68,74,72,71,68,65];
+new Chart(document.getElementById('rainfallChart'),{
+  type:'bar',
+  data:{labels:MONTHS,datasets:[
+    {label:'2026 Rainfall',data:rfData,backgroundColor:rfData.map(v=>v>=100?'rgba(36,98,190,0.72)':'rgba(194,50,26,0.72)'),borderRadius:3,borderSkipped:false,order:2},
+    {label:'Normal',data:Array(10).fill(100),type:'line',borderColor:'rgba(196,150,28,0.75)',borderDash:[5,3],borderWidth:1.5,pointRadius:0,fill:false,order:1}
+  ]},
+  options:{...base,scales:{x:{...base.scales.x},y:{...base.scales.y,min:50,max:130,ticks:{...base.scales.y.ticks,callback:v=>v+'%'}}}}
+});
+
+const rs2026=[52,47,41,35,29,26,28,31,34,34];
+const rs2025=[65,60,55,50,44,42,58,68,72,70];
+new Chart(document.getElementById('reservoirChart'),{
+  type:'line',
+  data:{labels:MONTHS,datasets:[
+    {label:'2026',data:rs2026,borderColor:'#C2321A',backgroundColor:'rgba(194,50,26,0.10)',borderWidth:2.5,fill:true,tension:0.35,pointRadius:3.5,pointBackgroundColor:'#C2321A',pointBorderColor:tc.card,pointBorderWidth:1.5},
+    {label:'2025',data:rs2025,borderColor:'rgba(36,98,190,0.7)',borderDash:[5,3],borderWidth:1.8,fill:false,tension:0.35,pointRadius:2.5,pointBackgroundColor:'rgba(36,98,190,0.7)',pointBorderWidth:0}
+  ]},
+  options:{...base,scales:{x:{...base.scales.x},y:{...base.scales.y,min:0,max:100,ticks:{...base.scales.y.ticks,callback:v=>v+'%'}}}}
+});
+
+const ndvi=[-0.02,-0.03,-0.05,-0.09,-0.12,-0.16,-0.18,-0.19,-0.21,-0.22];
+new Chart(document.getElementById('ndviChart'),{
+  type:'bar',
+  data:{labels:MONTHS,datasets:[
+    {label:'NDVI Anomaly',data:ndvi,backgroundColor:ndvi.map(v=>v<-0.15?'rgba(194,50,26,0.78)':v<-0.08?'rgba(212,113,26,0.78)':'rgba(196,150,28,0.78)'),borderRadius:3,borderSkipped:false}
+  ]},
+  options:{...base,scales:{x:{...base.scales.x},y:{...base.scales.y,min:-0.30,max:0.05,ticks:{...base.scales.y.ticks,callback:v=>v.toFixed(2)}}}}
+});
+
+new Chart(document.getElementById('dwChart'),{
+  type:'bar',
+  data:{labels:['Crops','Bare\nGround','Grass','Water','Trees','Built'],datasets:[
+    {label:'2026',data:[38.2,18.7,12.3,2.1,8.2,6.8],backgroundColor:'rgba(194,50,26,0.75)',borderRadius:3,borderSkipped:false},
+    {label:'Hist. avg',data:[44.8,12.5,11.2,3.5,8.5,6.2],backgroundColor:'rgba(36,98,190,0.55)',borderRadius:3,borderSkipped:false}
+  ]},
+  options:{...base,scales:{x:{...base.scales.x},y:{...base.scales.y,ticks:{...base.scales.y.ticks,callback:v=>v+'%'}}}}
+});
+</script>
+</body>
+</html>
