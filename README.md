@@ -109,6 +109,75 @@ Map.addLayer(bathyRatio.clip(maharashtra), {min:0.8,max:1.4,palette:['#084594','
 
 ---
 
+### NASA ICESat-2 ATL13 (inland water surface elevation)
+
+```javascript
+// ICESat-2 ATL13 v006 — water surface elevation over Maharashtra reservoirs
+// ATL13 = Inland Water Surface Height, 100m along-track resolution, ~10 cm accuracy
+// Paste into code.earthengine.google.com
+
+var maharashtra = ee.FeatureCollection('FAO/GAUL/2015/level1')
+  .filter(ee.Filter.eq('ADM1_NAME', 'Maharashtra'));
+
+// Load ATL13 segments (each row = one lidar footprint over water)
+var atl13 = ee.FeatureCollection('NASA/ICESAT2/ATL13/006')
+  .filterBounds(maharashtra)
+  .filterDate('2026-01-01', '2026-10-15');
+
+// Filter to confident water retrievals (quality flag = 0)
+var goodObs = atl13.filter(ee.Filter.eq('quality_ph', 0));
+
+// Extract water surface elevation (ht_water_surf, metres, EGM2008 geoid)
+var waterElev = goodObs.map(function(f) {
+  return f.set({
+    'date': f.date().format('YYYY-MM-dd'),
+    'lon':  f.geometry().coordinates().get(0),
+    'lat':  f.geometry().coordinates().get(1),
+  });
+});
+
+print('ATL13 water observations in Maharashtra 2026:', waterElev.size());
+
+// Time series for a specific reservoir — example: Koyna
+var koynaBound = ee.Geometry.Point([73.75, 17.40]).buffer(5000);
+var koynaSeries = goodObs.filterBounds(koynaBound);
+
+// Chart elevation over time
+var chart = ui.Chart.feature.byFeature({
+  features: koynaSeries.sort('system:time_start'),
+  xProperty: 'system:time_start',
+  yProperties: ['ht_water_surf']
+}).setOptions({
+  title: 'Koyna Reservoir — ICESat-2 Water Surface Elevation 2026',
+  vAxis: {title: 'Elevation (m, EGM2008)'},
+  hAxis: {title: 'Date'},
+  lineWidth: 2,
+  pointSize: 4
+});
+print(chart);
+
+// Compute year-over-year drop: compare same tracks in 2025 vs 2026
+var atl13_2025 = ee.FeatureCollection('NASA/ICESAT2/ATL13/006')
+  .filterBounds(maharashtra)
+  .filterDate('2025-01-01', '2025-10-15')
+  .filter(ee.Filter.eq('quality_ph', 0));
+
+var meanElev2025 = atl13_2025.filterBounds(koynaBound)
+  .reduceColumns(ee.Reducer.mean(), ['ht_water_surf'])
+  .get('mean');
+
+var meanElev2026 = koynaSeries
+  .reduceColumns(ee.Reducer.mean(), ['ht_water_surf'])
+  .get('mean');
+
+print('Koyna mean elevation 2025 (m):', meanElev2025);
+print('Koyna mean elevation 2026 (m):', meanElev2026);
+```
+
+> **Why ICESat-2?** Unlike CWC percentage reports, ATL13 gives absolute water surface elevation in metres. Combining with multi-year data reveals whether current levels are historically unprecedented — without relying on ground gauges.
+
+---
+
 ## Data sources
 
 | Source | What it provides |
@@ -118,6 +187,28 @@ Map.addLayer(bathyRatio.clip(maharashtra), {min:0.8,max:1.4,palette:['#084594','
 | [IMD](https://mausam.imd.gov.in/) | District rainfall data |
 | [CWC](https://cwc.gov.in/reservoir-storage) | Central Water Commission reservoir levels |
 | [Copernicus S2](https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED) | Sentinel-2 multispectral for bathymetry |
+| [NASA ICESat-2 ATL13 v006](https://nsidc.org/data/atl13) | Inland water surface elevation, ≈10 cm vertical accuracy |
+
+---
+
+## Deploy to GitHub Pages
+
+```bash
+# 1. Create the repo (one time)
+git init
+git add .
+git commit -m "Initial: Maharashtra Reservoir Intelligence dashboard"
+
+# 2. Push to GitHub
+git remote add origin https://github.com/manmeet3591/maharashtra-reservoir-intelligence.git
+git branch -M main
+git push -u origin main
+
+# 3. Enable GitHub Pages
+# → Settings → Pages → Branch: main → folder: / (root) → Save
+# Your dashboard will be live at:
+# https://manmeet3591.github.io/maharashtra-reservoir-intelligence/
+```
 
 ---
 
